@@ -82,17 +82,8 @@ struct Client {
 //Vector that stores every client that has been created
 std::vector<Client*> client_db;
 std::unordered_map<Client *, std::vector<Message>> unseenPosts;
-string trim(const std::string& str) {
-    size_t start = 0;
-    while (start < str.length() && (std::isspace(str[start]) || str[start] == '\n' || str[start] == '\t')) {
-        start++;
-    }
-    size_t end = str.length();
-    while (end > start && (std::isspace(str[end - 1]) || str[end - 1] == '\n' || str[end - 1] == '\t')) {
-        end--;
-    }
-    return str.substr(start, end - start);
-  }
+
+// helper method to find index of a username in the client_db
 int findUser(vector<Client*> arr, std::string name) {
   for (int i = 0; i < arr.size(); i++) {
     if (arr[i]->username == name) {
@@ -101,6 +92,7 @@ int findUser(vector<Client*> arr, std::string name) {
   }
   return -1;
 }
+// helper method to find target in followers
 int findIndex(vector<Client*> vec, Client* target) {
     for (size_t i = 0; i < vec.size(); ++i) {
         if (vec[i] == target) {
@@ -115,6 +107,7 @@ class SNSServiceImpl final : public SNSService::Service {
     /*********
     YOUR CODE HERE
     **********/
+    // get all users in client_db and all users in client followers and add them to list reply
     Client * c1 = client_db[findUser(client_db, request->username())];
     for (auto u : client_db) {
       list_reply->add_all_users(u->username);
@@ -130,13 +123,15 @@ class SNSServiceImpl final : public SNSService::Service {
     /*********
     YOUR CODE HERE
     **********/
+    // get username of current user and other user
     string u1 = request->username();
     string u2 = request->arguments(0);
     int ind = findUser(client_db, u2);
-
+    // check if other user exists
     if (ind == -1) {
       reply->set_msg("invalid username");
     } else {
+      // if both users exist, check if already following, otherwise follow
       Client * c1 = client_db[findUser(client_db, u1)];
       Client * c2 = client_db[ind];
       if (findUser(c1->client_following, c2->username) != -1) {
@@ -155,14 +150,18 @@ class SNSServiceImpl final : public SNSService::Service {
     /*********
     YOUR CODE HERE
     **********/
+    // find username of current user and user to follow
     string u1 = request->username();
     string u2 = request->arguments(0);
     int ind = findUser(client_db, u2);
+    // if other user doesn't exist, throw error
     if (ind == -1) {
       reply->set_msg("not a valid user");
     } else {
+      // store clients for each
       Client * c1 = client_db[findUser(client_db, u1)];
       Client * c2 = client_db[ind];
+      // if the user currently follows other user, unfollow. if they dont follow, throw error
       if (findUser(c1->client_following, c2->username) != -1) {
         reply->set_msg("unfollow successful");
         c1->client_following.erase(c1->client_following.begin()+findIndex(c1->client_following, c2));
@@ -180,6 +179,7 @@ class SNSServiceImpl final : public SNSService::Service {
     /*********
     YOUR CODE HERE
     **********/
+    // create a new client if the username doesnt exist already
     Client *c = new Client();
     c->username = request->username();
     int pos = findUser(client_db, c->username);
@@ -203,7 +203,6 @@ class SNSServiceImpl final : public SNSService::Service {
     // ------------------------------------------------------------
     Message m;
     while (stream->Read(&m)){
-
       string username = m.username();
       // find the user that this message is from and get the corresponding fields
       Client * c = client_db[findUser(client_db, username)];
@@ -214,9 +213,10 @@ class SNSServiceImpl final : public SNSService::Service {
       // if it is the openeing message, read the last 20 messages from their file
       // if it is not the opening message, save their message to their file
       if (m.msg() != "CSCE 438") {
-        ofstream currUserFile(username + ".txt", ofstream::out | ofstream::in | ofstream::app);
+        ofstream currUserFile(username + ".txt", ofstream::app);
         currUserFile << ffo;
       } else {
+        // open the user's unread message file
         ifstream userUnseen(username+"_following.txt");
         int ct = 0;
         string s_message;
@@ -225,12 +225,14 @@ class SNSServiceImpl final : public SNSService::Service {
         while (getline(userUnseen, s_message)) {
           messages.push_back(s_message);
         }
+        // read the most recent 20 messages in reverse order (from the bottom of the list)
         int startInd;
         if (messages.size() > 20) {
           startInd = messages.size() - 20;
         } else {
           startInd = 0;
         }
+        // write the messages to the stream to display most recent 20 messages when a user opens timeline first
         for (int i = messages.size()-1; i >= startInd; i--) {
           Message currMessage;
           currMessage.set_msg(messages[i]);
@@ -243,13 +245,15 @@ class SNSServiceImpl final : public SNSService::Service {
         if (m.msg() == "CSCE 438") {
           continue;
         }
+
         // save the post to the other files
-        string otherfilename = follower->username + "_following.txt";
-        ofstream other_file(otherfilename, ofstream::out | ofstream::in | ofstream::app);
+        string followingfile = follower->username + "_following.txt";
+        ofstream followFile(followingfile, ofstream::app);
+        // if followers are in timeline already, write the message to the stream to display
         if (follower->stream) {
           follower->stream->Write(m);
         }
-        other_file << ffo;
+        followFile << ffo;
       }
     }
     return Status::OK;

@@ -67,23 +67,8 @@ private:
   void   Timeline(const std::string &username);
 };
 
-
-///////////////////////////////////////////////////////////
-//
-//////////////////////////////////////////////////////////
 int Client::connectTo()
 {
-  // ------------------------------------------------------------
-  // In this function, you are supposed to create a stub so that
-  // you call service methods in the processCommand/porcessTimeline
-  // functions. That is, the stub should be accessible when you want
-  // to call any service methods in those functions.
-  // Please refer to gRpc tutorial how to create a stub.
-  // ------------------------------------------------------------
-    
-///////////////////////////////////////////////////////////
-// YOUR CODE HERE
-//////////////////////////////////////////////////////////
   stub_ =  csce438::SNSService::NewStub(grpc::CreateChannel(hostname+":"+port, grpc::InsecureChannelCredentials()));
   IReply reply = Login();
   if (reply.comm_status != SUCCESS) {
@@ -94,51 +79,6 @@ int Client::connectTo()
 
 IReply Client::processCommand(std::string& input)
 {
-  // ------------------------------------------------------------
-  // GUIDE 1:
-  // In this function, you are supposed to parse the given input
-  // command and create your own message so that you call an 
-  // appropriate service method. The input command will be one
-  // of the followings:
-  //
-  // FOLLOW <username>
-  // UNFOLLOW <username>
-  // LIST
-  // TIMELINE
-  // ------------------------------------------------------------
-  
-  // ------------------------------------------------------------
-  // GUIDE 2:
-  // Then, you should create a variable of IReply structure
-  // provided by the client.h and initialize it according to
-  // the result. Finally you can finish this function by returning
-  // the IReply.
-  // ------------------------------------------------------------
-  
-  
-  // ------------------------------------------------------------
-  // HINT: How to set the IReply?
-  // Suppose you have "FOLLOW" service method for FOLLOW command,
-  // IReply can be set as follow:
-  // 
-  //     // some codes for creating/initializing parameters for
-  //     // service method
-  //     IReply ire;
-  //     grpc::Status status = stub_->FOLLOW(&context, /* some parameters */);
-  //     ire.grpc_status = status;
-  //     if (status.ok()) {
-  //         ire.comm_status = SUCCESS;
-  //     } else {
-  //         ire.comm_status = FAILURE_NOT_EXISTS;
-  //     }
-  //      
-  //      return ire;
-  // 
-  // IMPORTANT: 
-  // For the command "LIST", you should set both "all_users" and 
-  // "following_users" member variable of IReply.
-  // ------------------------------------------------------------
-
     IReply ire;
     int space_index = input.find(' ');
     if (space_index != std::string::npos) {
@@ -154,11 +94,6 @@ IReply Client::processCommand(std::string& input)
     } else if (input == "TIMELINE") {
       Timeline(username);
     }
-
-    /*********
-    YOUR CODE HERE
-    **********/
-
     return ire;
 }
 
@@ -170,12 +105,7 @@ void Client::processTimeline()
 
 // List Command
 IReply Client::List() {
-
     IReply ire;
-
-    /*********
-    YOUR CODE HERE
-    **********/
     ClientContext cc;
     ListReply reply;
     Request req;
@@ -197,20 +127,20 @@ IReply Client::List() {
 
 // Follow Command        
 IReply Client::Follow(const std::string& username2) {
-
+  // set request arguments
     IReply ire; 
     Request req;
     req.set_username(username);
     req.add_arguments(username2);
-    /***
-    YOUR CODE HERE
-    ***/
     Reply reply;
     ClientContext cc;
+    // check if the username they are trying to follow is the same as own username
     if (username2 == username) {
       ire.comm_status = IStatus::FAILURE_ALREADY_EXISTS;
     } else {
+      // submit follow request
       Status status = stub_->Follow(&cc, req, &reply);
+      // check the reply message of the user and change status appropriately
       if (reply.msg() == "already follow user") {
         ire.comm_status = IStatus::FAILURE_ALREADY_EXISTS;
       } else if (reply.msg() == "invalid username") {
@@ -230,9 +160,6 @@ IReply Client::UnFollow(const std::string& username2) {
     Request req;
     req.set_username(username);
     req.add_arguments(username2);
-    /***
-    YOUR CODE HERE
-    ***/
     Reply reply;
     ClientContext cc;
     if (username == username2) {
@@ -254,16 +181,12 @@ IReply Client::UnFollow(const std::string& username2) {
 
 // Login Command  
 IReply Client::Login() {
-
     IReply ire;
-
     Request request;
     Reply reply;
     ClientContext context;
-
     request.set_username(username);
     Status status = stub_->Login(&context, request, &reply);
-
     ire.grpc_status = status;
     if (reply.msg() == "logged in"){
       ire.comm_status = IStatus::SUCCESS;
@@ -271,60 +194,35 @@ IReply Client::Login() {
       ire.comm_status = IStatus::FAILURE_ALREADY_EXISTS;
     }
     return ire;
-    /***
-     YOUR CODE HERE
-    ***/
-    
 }
 
 // Timeline Command
 void Client::Timeline(const std::string& username) {
-
-    // ------------------------------------------------------------
-    // In this function, you are supposed to get into timeline mode.
-    // You may need to call a service method to communicate with
-    // the server. Use getPostMessage/displayPostMessage functions 
-    // in client.cc file for both getting and displaying messages 
-    // in timeline mode.
-    // ------------------------------------------------------------
-
-    // ------------------------------------------------------------
-    // IMPORTANT NOTICE:
-    //
-    // Once a user enter to timeline mode , there is no way
-    // to command mode. You don't have to worry about this situation,
-    // and you can terminate the client program by pressing
-    // CTRL-C (SIGINT)
-    // ------------------------------------------------------------
-  
-    /***
-    YOUR CODE HERE
-    ***/
     ClientContext context;
     shared_ptr<ClientReaderWriter<Message, Message>> stream(stub_->Timeline(&context));
-    
     thread writethread([username, stream](){
-        string start = "CSCE 438";
-        Message m = MakeMessage(username, start);
-        stream->Write(m);
+        bool firstTime = true;
         while(true){
-          start = getPostMessage();
-          m = MakeMessage(username, start);
+          // each time there is a new post message to write, send it to the server after making the message with the username and message
+          // this loop lasts forever since you cannot leave timeline mode
+          // if first time, initialize stream
+          string start = firstTime ? "CSCE 438" : getPostMessage();
+          firstTime = false;
+          Message m = MakeMessage(username, start);
           stream->Write(m);
         }
         stream->WritesDone();
     });
-    
-    
     thread readthread([username, stream](){
         Message m;
         while(stream->Read(&m)){
+            // any time there is a new message to read from the stream, read it and display it in the terminal
             google::protobuf::Timestamp timestamp = m.timestamp();
             time_t t = timestamp.seconds();
             displayPostMessage(m.username(), m.msg(), t);
         }
     });
-	
+    // join threads once finished
     writethread.join();
     readthread.join();    
 	
